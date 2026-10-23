@@ -1,0 +1,30 @@
+# 运行产物
+__pycache__/
+*.py[cod]
+*.pyo
+build/
+dist/
+*.spec.bak
+_portable/
+_inst.log
+
+# 本地数据与备份（每个人的计划与打卡记录，不进仓库）
+data/
+export/
+
+# 早期内置插画：来源是网络视频截图，不随仓库分发
+assets/original/
+
+# 用户自己换的背景图副本
+assets/user/
+
+# 打包产物：如需分发请走 GitHub Releases，不要把 exe 提交进仓库
+release/*.exe
+release/*.zip
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
