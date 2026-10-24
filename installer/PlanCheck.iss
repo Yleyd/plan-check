@@ -1,9 +1,9 @@
-﻿; Plan check 安装脚本（Inno Setup 6）
+; Plan check 安装脚本（Inno Setup 6）
 ; 编译：ISCC.exe PlanCheck.iss
 
 #define AppName "Plan check"
 #define AppExe "PlanCheck.exe"
-#define AppVersion "1.0.3"
+#define AppVersion "1.0.4"
 #define AppPublisher "Plan check"
 #define AppId "{{8F3C1A20-6D42-4E71-9B58-2C7A5E0D91B4}"
 
@@ -53,6 +53,8 @@ Source: "..\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedo
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\NOTICE.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\assets\default\*.jpg"; DestDir: "{app}\assets\default"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\assets\icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\assets\icon.png"; DestDir: "{app}\assets"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: startmenu

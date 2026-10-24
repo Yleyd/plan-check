@@ -26,6 +26,29 @@ hiddenimports = [
     "pdfminer",
 ]
 
+# 体积优化（1.0.4）：实测确认可去掉的大块头
+#
+# pypdfium2 / pypdfium2_raw：pdfium.dll 7.04 MB。只被 pdfplumber 的
+#   display.py（页面渲染预览）引用，extract_text / extract_tables 都不用它。
+#   屏蔽后实测文本提取正常、extract_tables 返回 []、无异常。
+# _avif：Pillow 的 AVIF 解码器 7.53 MB。我们只读写 JPEG/PNG。
+#   Pillow 是运行时按需 import 扩展的，不打包就不存在，JPEG/PNG 不受影响。
+EXCLUDES = [
+    "numpy", "pandas", "matplotlib", "scipy", "IPython", "notebook",
+    "jupyter", "pytest", "setuptools", "pip", "wheel",
+    "pygame", "pkg_resources", "jaraco", "tkinter.test", "test",
+    "unittest", "pydoc_data", "lib2to3", "sqlite3",
+    # ---- 体积优化 ----
+    "pypdfium2", "pypdfium2_raw",
+    "PIL._avif",
+    "PIL.ImageQt", "PIL.ImageShow", "PIL.ImageTiff",
+    "PIL._imagingcms", "PIL._imagingmath", "PIL._imagingmorph",
+    "PIL.ImageGrab", "PIL.ImageEnhance",
+    "xmlrpc", "http.server", "ftplib", "smtplib", "telnetlib",
+    "multiprocessing", "concurrent", "asyncio",
+    "pydoc", "doctest", "difflib", "optparse", "gettext",
+]
+
 a = Analysis(
     ["run.py"],
     pathex=[APP_DIR],
@@ -35,12 +58,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        "numpy", "pandas", "matplotlib", "scipy", "IPython", "notebook",
-        "jupyter", "pytest", "setuptools", "pip", "wheel",
-        "pygame", "pkg_resources", "jaraco", "tkinter.test", "test",
-        "unittest", "pydoc_data", "lib2to3", "sqlite3",
-    ],
+    excludes=EXCLUDES,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

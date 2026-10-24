@@ -28,11 +28,40 @@ _DATE_PATTERNS = [
 ]
 
 
+def _as_text(value):
+    """把任意单元格值转成可解析的字符串。
+
+    Excel 里用户敲 2026-03-05，openpyxl 读出来是 datetime.datetime；
+    旧代码直接 .strip() 就 AttributeError 崩掉整个导入 —— 这是
+    「模板下载后一改就识别不出」的首要原因。
+    """
+    if value is None:
+        return ""
+    if isinstance(value, dt.datetime):
+        return value.date().strftime(DATE_FMT)
+    if isinstance(value, dt.date):
+        return value.strftime(DATE_FMT)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        # Excel 里日期也可能存成序列号（1900 基准）
+        if 20000 <= float(value) <= 80000:
+            try:
+                return (dt.date(1899, 12, 30) +
+                        dt.timedelta(days=int(float(value)))).strftime(DATE_FMT)
+            except Exception:
+                pass
+        return str(value)
+    return str(value).strip()
+
+
 def parse_date(text):
     """严格解析日期。整串必须是日期，不允许尾巴带别的字。"""
-    text = (text or "").strip()
+    text = _as_text(text).strip()
     if not text:
         return None
+    # 常见手写变体先归一再匹配
+    text = text.replace("／", "/").replace("．", ".").replace("。", ".")
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"(星期|周)[一二三四五六日天]$", "", text)
     for pattern in _DATE_PATTERNS:
         m = pattern.match(text)
         if not m:
@@ -49,7 +78,7 @@ def parse_date(text):
 
 def peel_date(text):
     """从「2026-03-02 数学 高数」这种行首日期里剥出日期和剩余文本。"""
-    text = (text or "").strip()
+    text = _as_text(text).strip()
     m = re.match(r"^(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{4}年\d{1,2}月\d{1,2}日?"
                  r"|\d{1,2}月\d{1,2}日)\s*[，,、:：|]?\s*(.*)$", text)
     if not m:
@@ -61,7 +90,7 @@ def peel_date(text):
 
 
 def norm_text(text):
-    return re.sub(r"\s+", " ", (text or "").strip()).lower()
+    return re.sub(r"\s+", " ", _as_text(text)).lower()
 
 
 def task_id(date, subject, text):

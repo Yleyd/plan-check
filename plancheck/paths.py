@@ -5,7 +5,7 @@ import tempfile
 
 APP_NAME = "PlanCheck"
 APP_TITLE = "Plan check"
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
 
 def _app_dir():

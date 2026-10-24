@@ -73,12 +73,20 @@ def _on_close(root, app):
         app.close()
     except Exception:
         pass
-    # 取消所有待执行的 after 回调，否则 destroy 后回调仍触发
-    # 会报 AttributeError: 'NoneType' object has no attribute 'remove'
+    # 撤掉所有待执行的 after，否则 destroy 之后回调仍会触发。
+    #
+    # ⚠️ 千万别用 root.after_cancel(aid) 去取消「别的控件」注册的 after：
+    # after_cancel 内部会调 self.deletecommand(script)，把这个 Tcl 命令从
+    # 解释器里真删掉，可那个控件的 _tclCommands 列表里还留着这个名字。
+    # 紧接着 root.destroy() 级联销毁子控件时，子控件的 Misc.destroy 会再
+    # deletecommand 一次，抛 TclError: can't delete Tcl command，整个销毁
+    # 流程中断、mainloop 不退出 —— 这就是「点一下 X 退不出、要再点一下」
+    # 的根因（第二次点子控件已经没了，所以能退）。
+    # 正确做法：只在 Tcl 层面 cancel，不碰 deletecommand。
     try:
-        for aid in root.tk.call("after", "info"):
+        for aid in root.tk.splitlist(root.tk.call("after", "info")):
             try:
-                root.after_cancel(aid)
+                root.tk.call("after", "cancel", aid)
             except Exception:
                 pass
     except Exception:
@@ -86,7 +94,13 @@ def _on_close(root, app):
     try:
         root.destroy()
     except Exception:
-        pass
+        # 极少数情况下销毁仍会失败（某个控件的事件回调正卡在中间），
+        # 记一笔日志并强制结束 mainloop，绝不能把窗口留在屏幕上。
+        _log("关闭窗口失败：\n" + traceback.format_exc())
+        try:
+            root.quit()
+        except Exception:
+            pass
 
 
 def _set_icon(root, tk):
@@ -189,8 +203,15 @@ def main(argv=None):
         root.deiconify()
         _force_visible(root)
     else:
+        from .ui import art
         from .ui.splash import Splash
-        art_key = Settings().get("start_art", "gen_ring")
+        _st = Settings()
+        # 启动画面的图必须按「splash 这个位置」取，不能用全局 start_art：
+        # 1.0.2 之前自定义图按图 key 存，start_art 和进度页共用 gen_ring，
+        # 给进度换图会把启动画面一起换掉。
+        art.set_slot_art({"splash": _st.get("start_art", "gen_ring")})
+        art.set_custom_map(_st.get("custom_art") or {})
+        art_key = art.art_for_slot("splash")
         Splash(root, tk, show_main, art_key=art_key)
 
     # 硬兜底：无论启动画面走没走完，1.5 秒后主窗必须是可见且不透明的

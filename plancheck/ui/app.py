@@ -44,7 +44,7 @@ class App(tk.Frame):
         self._closing = False
 
         # 用户自定义背景图要在任何一次 load_art 之前装进 art 模块
-        art.set_custom_map(self.settings.get("custom_art") or {})
+        self._sync_art()
 
         self._style()
         self._header()
@@ -75,6 +75,19 @@ class App(tk.Frame):
 
     def _first_page(self):
         return "today"
+
+    def _slot_art_map(self):
+        """{页面 key: 该页选中的内置图 key}，供 art.art_for_slot 使用。"""
+        out = {"splash": self.settings.get("start_art", "gen_ring")}
+        for key in ("today", "prog", "cal", "set"):
+            out[key] = self.settings.art_of(key)
+        return out
+
+    def _sync_art(self):
+        """把「用户选的内置图」和「用户自定义图」一起推给 art 模块。
+        换图相关的一切都必须走这里，否则两个映射容易不同步。"""
+        art.set_slot_art(self._slot_art_map())
+        art.set_custom_map(self.settings.get("custom_art") or {})
 
     # ------------------------------------------------------------ 样式
     def _style(self):
@@ -127,7 +140,7 @@ class App(tk.Frame):
     def _paint_header(self):
         W = max(200, self.hd.winfo_width())
         H = max(60, self.hd.winfo_height())
-        img = art.page_art(self.settings.art_of("today"), W, H, dark=0.55)
+        img = art.page_art(art.art_for_slot("today"), W, H, dark=0.55)
         img = art.glass_panel(img, (0, 0, W, H), radius=0, alpha=0.52,
                               tint=theme.GLASS, border=None)
         # 底部分隔线
@@ -260,7 +273,7 @@ class App(tk.Frame):
     def _get_page(self, key):
         if key in self.pages:
             return self.pages[key]
-        art_key = self.settings.art_of(key)
+        art_key = art.art_for_slot(key)
         if key == "set":
             from .hero import HeroPage
             page = HeroPage(self.body, self, art_key)
@@ -811,7 +824,7 @@ class App(tk.Frame):
 
     def apply_art_change(self, page_key=None):
         """换了背景图后重建对应页面。"""
-        art.set_custom_map(self.settings.get("custom_art") or {})
+        self._sync_art()
         art.clear_art_cache()
         # 启动画面不在页面列表里，换图后下次启动才生效，不用重建任何页面
         if page_key == "splash":

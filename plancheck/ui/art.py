@@ -51,11 +51,34 @@ _LEGACY_TO_GEN = {
 
 # 页面 key -> 默认图 key。custom_art 里老版本存的是页面 key（today/prog/...），
 # 新版本统一存图 key（gen_night/...），这里用于双向兼容。
+#
+# 注意：这里绝不能出现「两个页面映射到同一个图 key」的情况。
+# 1.0.3 之前 splash 和 prog 都是 gen_ring，导致自定义图的存储位置撞车：
+# 给「进度」换图会把「启动画面」一起换掉（用户反馈的"图和页面对不上/换反了"）。
+# 现在每个页面都有独立的存储 key，见 _page_slot()。
 _PAGE_TO_ART_KEY = {
     "today": "gen_night", "prog": "gen_ring", "cal": "gen_hat",
     "set": "gen_clash", "splash": "gen_ring",
 }
 _ART_KEY_TO_PAGE = dict((v, k) for k, v in _PAGE_TO_ART_KEY.items())
+
+
+def page_slot(page_key):
+    """自定义背景图的唯一存储位置。
+
+    四个页面直接用页面 key（today/prog/cal/set），启动画面用 splash。
+    图 key（gen_night 这类）只表示"用哪张内置图"，不表示"存在哪"。
+    1.0.2 及更早按图 key 存，导致共用同一张内置图的两个页面互相覆盖；
+    读取时用 _LEGACY_SLOT 兼容老数据。
+    """
+    if page_key in ("today", "prog", "cal", "set", "splash"):
+        return page_key
+    # 传进来的是图 key：反查它属于哪个页面（多选一时优先非 splash）
+    page = _ART_KEY_TO_PAGE.get(page_key)
+    return page or page_key
+
+
+_LEGACY_SLOT = {}
 
 
 def page_to_art_key(page_key, default=None):
@@ -65,6 +88,13 @@ def page_to_art_key(page_key, default=None):
     if page_key in _PAGE_TO_ART_KEY:
         return _PAGE_TO_ART_KEY[page_key]
     return default or "gen_night"
+
+
+def slot_art_key(page_key):
+    """某个页面「默认」用哪张内置图（不考虑用户自定义）。"""
+    if page_key == "splash":
+        return "gen_ring"
+    return _PAGE_TO_ART_KEY.get(page_key, "gen_night")
 
 
 _PIL = None
@@ -94,38 +124,80 @@ def photo(im):
     return _IMAGETK.PhotoImage(im)
 
 
-# 用户在「换背景图」里选的本地图片：{页面 key: 文件名}。
+# 用户自己选的背景图：{存储位置: 文件名}。
+# 存储位置 = 页面 key（today/prog/cal/set/splash），由 page_slot() 给出。
 # 由 App 启动时和换图后写入（避免 art 反向依赖 core.settings 造成循环导入）。
 _CUSTOM = {}
 
+# 每个页面当前该用哪张内置图：{页面 key: 图 key}
+_SLOT_ART = {}
+
 
 def set_custom_map(mapping):
-    """mapping 的 key 可以是「图 key」(gen_night) 也可以是「页面 key」(today)。
+    """mapping 的 key 可以是「存储位置」(today/splash) 也可以是「图 key」(gen_ring)。
 
-    历史原因两种都出现过，这里统一按图 key 存，同时保留页面 key 的别名，
-    避免老配置（1.0.2 及之前写的是页面 key）失效。
+    历史原因两种都出现过。图 key 只用于兼容 1.0.2 及更早的配置：
+    那时按图 key 存，共用同一张内置图的两个页面会互相覆盖，
+    这里按页面顺序取第一个匹配，至少不会把启动画面串到别的页上。
     """
     global _CUSTOM
     raw = dict(mapping or {})
     resolved = {}
     for key, name in raw.items():
-        resolved[key] = name
-        # 页面 key → 对应的图 key，让 art_path 两个方向都能查到
-        for pkey, ikey in _PAGE_TO_ART_KEY.items():
-            if key == pkey and ikey not in resolved:
-                resolved[ikey] = name
+        if key in ("today", "prog", "cal", "set", "splash"):
+            resolved[key] = name
+    # 老配置：图 key -> 页面 key
+    legacy_order = ["splash", "today", "prog", "cal", "set"]
+    for key, name in raw.items():
+        if key in resolved or key not in ART_FILES:
+            continue
+        for page in legacy_order:
+            if _PAGE_TO_ART_KEY.get(page) == key and page not in resolved:
+                resolved[page] = name
+                break
     _CUSTOM = resolved
     clear_art_cache()
 
 
+def set_slot_art(mapping):
+    """记录每个页面当前选中的内置图 key。"""
+    global _SLOT_ART
+    _SLOT_ART = dict(mapping or {})
+    clear_art_cache()
+
+
+def art_for_slot(page_key):
+    """某个页面真正要显示的图 key：用户自定义过就用自定义，否则用该页选中的内置图。
+
+    返回值一定是 ART_FILES 里的 key，page_art() 才有签名可算。
+    """
+    if page_key in _CUSTOM:
+        # 自定义图需要伪 key 参与缓存签名，用 "custom:<slot>" 区分
+        return "custom:" + page_key
+    chosen = _SLOT_ART.get(page_key)
+    if chosen in ART_FILES:
+        return chosen
+    return slot_art_key(page_key)
+
+
 def art_path(key):
-    """自定义图优先，其次用户目录同名图，最后内置默认图。"""
+    """按 key 找图片文件。
+
+    key 有两种：
+    - "custom:<页面>"  该页面用户自己选的图
+    - gen_xxx          内置生成图
+    """
+    if key.startswith("custom:"):
+        slot = key.split(":", 1)[1]
+        name = _CUSTOM.get(slot)
+        if name:
+            p = os.path.join(paths.USER_ASSETS, name)
+            if os.path.exists(p):
+                return p
+        # 自定义文件被删了：退回该页默认图，不要留黑块
+        key = slot_art_key(slot)
+
     key = page_to_art_key(key) if key not in ART_FILES else key
-    custom = _CUSTOM.get(key)
-    if custom:
-        p = os.path.join(paths.USER_ASSETS, custom)
-        if os.path.exists(p):
-            return p
     name = ART_FILES.get(key)
     if not name:
         return None
@@ -246,10 +318,15 @@ def _art_stamp(key):
         return ("", 0, 0)
 
 
-def page_art(key, w, h, dark=0.42, blur=None):
-    """页面底图：铺满 + 模糊 + 压暗 + 双光晕 + 暗角。"""
+def page_art(key, w, h, dark=0.42, blur=None, token=None):
+    """页面底图：铺满 + 模糊 + 压暗 + 双光晕 + 暗角。
+
+    key 可以是内置图 key（gen_night）或伪 key（custom:today）。
+    token 用于额外区分缓存（例如头部和页面用同一张图、不同参数时不用传，
+    因为 dark 已经在签名里了；保留这个参数是为了将来扩展）。
+    """
     # 签名带上图文件指纹：换图后即使 key/w/h 不变也不会命中旧缓存
-    sig = (key, w, h, round(dark, 3), blur, _art_stamp(key))
+    sig = (key, w, h, round(dark, 3), blur, token, _art_stamp(key))
     if sig in _PAGE_CACHE:
         return _PAGE_CACHE[sig].copy()
 

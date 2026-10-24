@@ -403,8 +403,13 @@ class ArtDialog(BaseDialog):
             row.pack(fill="x", pady=5)
             widgets.label(row, name, 10, theme.TEXT, theme.BG, bold=True,
                           width=8, anchor="w").pack(side="left")
-            current = (app.settings.get("start_art") if key == "splash"
-                       else app.settings.art_of(key))
+            # 下拉框显示「这张页面真正在用的内置图」：
+            # 自定义过就显示它的底图，没自定义就是该页选的那张。
+            current = art.slot_art_key(key)
+            if app.settings.get("start_art") and key == "splash":
+                current = app.settings.get("start_art")
+            elif key != "splash":
+                current = app.settings.art_of(key)
             var = tk.StringVar(value="%s（%s）" % (current, art.ART_NAMES.get(current, current)))
             box = ttk.Combobox(row, textvariable=var, state="readonly",
                                values=values, width=24, font=app.f(10))
@@ -413,7 +418,9 @@ class ArtDialog(BaseDialog):
             widgets.Pill(row, "选本地图片…",
                          lambda k=key: self._pick_file(k),
                          width=124, height=32, bg=theme.BG).pack(side="left")
-            if art.page_to_art_key(key) in self.custom_now:
+            # 判断是否用了自定义图：按页面存储位置查，不能按图 key
+            # （1.0.2 之前 prog 和 splash 共用 gen_ring，判断结果互相串）
+            if art.page_slot(key) in self.custom_now:
                 widgets.label(row, "（已用自定义图）", 9, theme.OK, theme.BG).pack(
                     side="left", padx=(8, 0))
 
@@ -451,19 +458,20 @@ class ArtDialog(BaseDialog):
         w, h = im.size
         if w > 2560:
             im = im.resize((2560, int(h * 2560.0 / w)), Image.LANCZOS)
-        name = "custom_%s_%s.jpg" % (page_key, dt.datetime.now().strftime("%H%M%S"))
+        slot = art.page_slot(page_key)
+        # 文件名里带页面名，避免同一秒内给两页换图时互相覆盖
+        name = "custom_%s_%s.jpg" % (slot, dt.datetime.now().strftime("%H%M%S%f")[:10])
         paths.ensure_dirs()
         target = os.path.join(paths.USER_ASSETS, name)
         im.save(target, "JPEG", quality=92)
 
-        custom = self.app.settings.get("custom_art") or {}
-        # 统一按「图 key」存：art_path() 是按图 key 查的，老版本按页面 key 存
-        # 会永远查不到，这就是「换图只是做样子」的第一层原因。
-        art_key = art.page_to_art_key(page_key)
-        custom[art_key] = name
+        custom = dict(self.app.settings.get("custom_art") or {})
+        # 按「页面存储位置」存。1.0.2 之前按图 key 存，prog 与 splash 是同一张
+        # gen_ring，于是给进度换图会把启动画面一起换掉（用户反馈图换了位置）。
+        custom[slot] = name
         self.app.settings.set("custom_art", custom)
-        self.custom_now[art_key] = name
-        art.set_custom_map(custom)
+        self.custom_now[slot] = name
+        self.app._sync_art()
         art.clear_art_cache()
         # 立刻生效（用户点了「选本地图片」就应该马上看到）
         self.app.apply_art_change(None if page_key == "splash" else page_key)
@@ -479,9 +487,8 @@ class ArtDialog(BaseDialog):
                 self.app.settings.set_art(key, value)
         self.app.settings.set("custom_art", {})
         self.custom_now = {}
-        art.set_custom_map({})
+        self.app._sync_art()
         art.clear_art_cache()
-        keys = list(art.ART_ORDER)
         for key, (var, _keys, _cur) in self.vars.items():
             value = defaults[key]
             var.set("%s（%s）" % (value, art.ART_NAMES.get(value, value)))
@@ -497,18 +504,24 @@ class ArtDialog(BaseDialog):
                 self.app.settings.set("start_art", value)
             else:
                 self.app.settings.set_art(key, value)
-            # 只有用户「明确改选了别的内置图」才取消该页的自定义图。
-            # 之前是无条件 pop：点「选本地图片」生效后再点「应用」，
-            # 因为下拉框还停在原内置图上，自定义图会被立刻删掉 ——
-            # 这正是「换图只是做样子」的直接原因。
-            art_key = art.page_to_art_key(key)
-            if art_key in self.custom_now and value != art_key:
+            # 只有用户「在对话框里明确改选了别的内置图」才取消该页的自定义图。
+            #
+            # ⚠️ 这里必须跟「打开对话框时该页选中的内置图」(_cur) 比，
+            # 绝不能跟 art.art_for_slot(key) 比 —— 用了自定义图之后
+            # art_for_slot() 返回的是伪 key "custom:today"，永远不等于任何
+            # 内置图 key，于是 value != art_for_slot() 恒为 True，等于无条件
+            # pop。用户点「选本地图片」→ 图立刻生效 → 再点「应用」（下拉框
+            # 还停在原内置图上）→ 自定义图被删掉、界面退回初始背景。
+            # 这就是「换图换了等于没换」的根因。
+            slot = art.page_slot(key)
+            if slot in self.custom_now and value != _cur:
                 custom = self.app.settings.get("custom_art") or {}
-                custom.pop(art_key, None)
-                custom.pop(key, None)
+                custom.pop(slot, None)
+                # 兼容 1.0.2 及更早按图 key 存的旧数据
+                custom.pop(art.page_to_art_key(key), None)
                 self.app.settings.set("custom_art", custom)
-                self.custom_now.pop(art_key, None)
-        art.set_custom_map(self.app.settings.get("custom_art") or {})
+                self.custom_now.pop(slot, None)
+        self.app._sync_art()
         art.clear_art_cache()
         self.app.apply_art_change()
         self.app.toast("背景已更新")
