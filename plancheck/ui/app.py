@@ -171,14 +171,21 @@ class App(tk.Frame):
                             fill=theme.MUTED, font=(theme.FONT, int(10 * s)))
 
         # 右侧统计：数值 16..66，标签 70..97
+        # 三组统计原来按固定 112px 间距往左排，任务数一大（"0 / 150"）
+        # 就会压到左边「总进度」的数字上。改成先量出每组实际宽度再排，
+        # 组间距按最宽的那组动态给，永远不会互相压住。
         stats = self._header_stats()
+        val_font = tkfont.Font(family=theme.FONT, size=int(17 * s), weight="bold")
+        lbl_font = tkfont.Font(family=theme.FONT, size=int(9 * s))
+        gap = int(34 * s)
+        widths = [max(val_font.measure(v), lbl_font.measure(l)) for l, v, _c in stats]
         x = W - int(28 * s)
-        for label_text, value, color in reversed(stats):
+        for (label_text, value, color), wid in zip(reversed(stats), reversed(widths)):
             self.hd.create_text(x, int(16 * s), anchor="ne", text=value,
                                 fill=color, font=(theme.FONT, int(17 * s), "bold"))
             self.hd.create_text(x, int(70 * s), anchor="ne", text=label_text,
                                 fill=theme.MUTED, font=(theme.FONT, int(9 * s)))
-            x -= int(112 * s)
+            x -= wid + gap
 
     def _header_sub(self):
         if not self.plan:
@@ -743,12 +750,18 @@ class App(tk.Frame):
         self.cur_date = self._initial_date()
         for key in list(self.pages):
             page = self.pages[key]
-            page.clear()
+            # 设置页是 HeroPage，接口不完全等同于 Page；用 getattr 兜底，
+            # 否则任何一个页面缺少 clear 都会让整个 reload_plan 中断。
+            clear = getattr(page, "clear", None)
+            if callable(clear):
+                clear()
         self.render_today()
         self.render_progress()
         self.render_calendar()
         if "set" in self.pages:
-            self.pages["set"].build()
+            build = getattr(self.pages["set"], "build", None)
+            if callable(build):
+                build()
         self.refresh_header()
 
     def install_plan(self, data, overwrite_id=None, merge=False):

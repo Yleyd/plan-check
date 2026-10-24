@@ -101,6 +101,16 @@ class HeroPage(tk.Frame):
     def build(self):
         self.schedule(20)
 
+    def clear(self):
+        """与 Page 接口保持一致。
+
+        reload_plan() 会对所有已创建的页面调 clear()，而设置页是 HeroPage
+        不是 Page，没有这个方法就会 AttributeError，导致导入计划后
+        reload_plan 中途抛异常 —— 表现为「点了导入没反应，关掉重开才有」。
+        设置页的内容是 _paint() 每次重画的，这里只需让布局失效、下次重排。
+        """
+        self._last_sig = None
+
     def layout(self):
         self._sched = None
         if self._laying:
