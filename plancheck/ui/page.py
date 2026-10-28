@@ -38,8 +38,9 @@ class Page(tk.Frame):
                                highlightthickness=0, relief="flat", elementborderwidth=0)
         self.cv.configure(yscrollcommand=self._on_scroll)
         self.cv.bind("<Configure>", self._on_conf)
-        self.cv.bind("<Enter>", self._bind_wheel)
-        self.cv.bind("<Leave>", self._unbind_wheel)
+        # 滚轮常驻绑定（原来靠 <Enter>/<Leave> 动态绑定，鼠标移进卡片
+        # 就触发 canvas 的 <Leave> -> unbind_all，导致卡片区域滚不动）。
+        self.bind_all("<MouseWheel>", self._on_wheel, add="+")
 
     # ---------------------------------------------------------- 卡片
     def clear(self):
@@ -271,14 +272,41 @@ class Page(tk.Frame):
         self.sb.set(first, last)
 
     def _bind_wheel(self, _e=None):
-        self.cv.bind_all("<MouseWheel>", self._on_wheel)
+        # 保留方法名，实际绑定改在 __init__ 里做（见 _wheel_all）。
+        pass
 
     def _unbind_wheel(self, _e=None):
-        self.cv.unbind_all("<MouseWheel>")
+        pass
 
     def _on_wheel(self, event):
-        if self.sb.winfo_ismapped():
-            self.cv.yview_scroll(int(-event.delta / 120), "units")
+        """滚轮：只处理指针真正落在本页上的那一次。
+
+        原来靠 canvas 的 <Enter>/<Leave> 动态 bind_all，但卡片是 canvas 的
+        子窗口，鼠标一移到卡片上就会触发 canvas 的 <Leave> -> unbind_all，
+        结果滚轮在卡片区域完全失灵（用户反馈"三条任务滚不动"）。
+        改成常驻绑定 + 命中判断，指针在卡片里也能滚。
+        """
+        try:
+            # 只有当前显示的页面才响应
+            if not self.winfo_ismapped():
+                return
+            if not self.sb.winfo_ismapped():
+                return
+            # 指针必须落在本页矩形内（多页同时存在时避免误滚）
+            x0, y0 = self.winfo_rootx(), self.winfo_rooty()
+            x1 = x0 + self.winfo_width()
+            y1 = y0 + self.winfo_height()
+            if not (x0 <= event.x_root < x1 and y0 <= event.y_root < y1):
+                return
+            # 指针在备注输入框里 -> 让 Text 自己滚
+            w = self.winfo_containing(event.x_root, event.y_root)
+            if w is not None and isinstance(w, tk.Text):
+                return
+            step = int(-event.delta / 120) if event.delta else 0
+            if step:
+                self.cv.yview_scroll(step, "units")
+        except Exception:
+            return
 
     def show(self, value=True):
         for rec in self.cards:

@@ -3,7 +3,7 @@
 
 #define AppName "Plan check"
 #define AppExe "PlanCheck.exe"
-#define AppVersion "1.0.4"
+#define AppVersion "1.1.0"
 #define AppPublisher "Plan check"
 #define AppId "{{8F3C1A20-6D42-4E71-9B58-2C7A5E0D91B4}"
 

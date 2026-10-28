@@ -4,7 +4,7 @@
 
 不联网、不注册、不上传任何数据。
 
-当前版本 **1.0.4**，历史见 [CHANGELOG.md](CHANGELOG.md)。旧版安装包都保留在 `release\`。
+当前版本 **1.1.0**，历史见 [CHANGELOG.md](CHANGELOG.md)。旧版安装包都保留在 `release\`。
 内置背景图全部由程序生成，来源见 [NOTICE.md](NOTICE.md)；代码 MIT。
 
 ---
@@ -13,11 +13,11 @@
 
 下载：https://github.com/Yleyd/plan-check/releases
 
-**安装包（推荐）**：双击 `PlanCheck-1.0.4-setup.exe`，选安装位置，可选桌面 / 开始菜单快捷方式。默认装到当前用户目录，不需要管理员权限。
+**安装包（推荐）**：双击 `PlanCheck-1.1.0-setup.exe`，选安装位置，可选桌面 / 开始菜单快捷方式。默认装到当前用户目录，不需要管理员权限。
 
 卸载时问你**是否保留计划与打卡记录**，选「是」下次安装还能接着用（静默卸载一律保留）。
 
-**绿色版**：解压 `PlanCheck-1.0.4-portable.zip`，双击 `PlanCheck.exe`。数据在 exe 同级的 `data\`，整个文件夹拷走就完成迁移。
+**绿色版**：解压 `PlanCheck-1.1.0-portable.zip`，双击 `PlanCheck.exe`。数据在 exe 同级的 `data\`，整个文件夹拷走就完成迁移。
 
 ---
 

@@ -439,6 +439,14 @@ class App(tk.Frame):
         self.note.insert("1.0", self.records.note_of(date_str))
         self.note_state.configure(text="")
 
+        # 任务行换了以后卡片内容高度会变（1 条 -> 3 条 -> 10 条），
+        # 必须让布局签名失效并重排，否则外层卡片还停在旧高度，
+        # 超出部分的任务行会被直接裁掉（用户看到"三条只显示两条"）。
+        page = self.pages.get("today")
+        if page is not None:
+            page._last_sig = None
+            page.schedule(10)
+
     def _subject_colors(self):
         mapping = {}
         for i, subj in enumerate(self.plan.subject_list() if self.plan else []):
@@ -550,6 +558,13 @@ class App(tk.Frame):
         self._save_note()
         self._sync_today()
         self.refresh_header()
+        # 换日期后任务条数变了，卡片高度必须重新量。
+        # 不调这一句时 _sync_today 只是换掉 task_box 里的行，
+        # 外层卡片仍按上一天的旧高度摆着，第 3 条起会被裁掉。
+        page = self.pages.get("today")
+        if page is not None:
+            page._last_sig = None
+            page.schedule(10)
 
     # ------------------------------------------------------------ 进度
     def render_progress(self):
